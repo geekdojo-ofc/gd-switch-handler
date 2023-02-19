@@ -1,0 +1,100 @@
+{
+    "vendorId": "0x3344",
+    "vendor": "virpil-controls",
+    "productId": "0x0259",
+    "product": "control-panel 1",
+    "switchMap": [
+        {
+            "name":"B1",
+            "type":"button",
+            "id": "589825"
+        },
+        {
+            "name":"B2",
+            "type":"button",
+            "id": "589826"
+        },
+        {
+            "name":"B3",
+            "type":"button",
+            "id": "589827"
+        },
+        {
+            "name":"B4",
+            "type":"button",
+            "id": "589828"
+        },
+        {
+            "name":"B5",
+            "type":"button",
+            "id": "589829"
+        },
+        {
+            "name":"B6",
+            "type":"button",
+            "id": "589830"
+        },
+        {
+            "name":"B7",
+            "type":"button",
+            "id": "589831"
+        },
+        {
+            "name":"B8",
+            "type":"button",
+            "id": "589832"
+        },
+        {
+            "name":"B9",
+            "type":"button",
+            "id": "589833"
+        },
+        {
+            "name":"B10",
+            "type":"button",
+            "id": "589834"
+        },
+        {
+            "name":"B11",
+            "type":"button",
+            "id": "589835"
+        },
+        {
+            "name":"B12",
+            "type":"button",
+            "id": "589836"
+        },
+        {
+            "name":"Emergency 1",
+            "type":"toggle",
+            "id": "emerg1",
+            "ida": "589837",
+            "idb": "589838",
+            "initialState": -1
+        },
+        {
+            "name":"Emergency 2",
+            "type":"toggle",
+            "id": "emerg2",
+            "ida": "589839",
+            "idb": "589840",
+            "initialState": -1
+        },
+        {
+            "name":"T3",
+            "type":"toggle",
+            "id": "t3",
+            "ida": "589841",
+            "idb": "589842",
+            "initialState": -1
+        },
+        {
+            "name":"T4",
+            "type":"toggle",
+            "id": "t4",
+            "ida": "589843",
+            "idb": "589844",
+            "initialState": -1
+        }
+    ]
+}
