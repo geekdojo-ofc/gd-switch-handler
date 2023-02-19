@@ -1,6 +1,7 @@
 using HidSharp;
 using HidSharp.Reports;
 using HidSharp.Reports.Encodings;
+using HidSharp.Reports.Input;
 using Microsoft.Extensions.Logging;
 
 namespace GD.SwitchHandler 
@@ -9,17 +10,29 @@ namespace GD.SwitchHandler
     {
         private readonly ILogger _logger;
         private readonly ISwitchFactory _switchFactory;
+        private ManualResetEvent _manual = new ManualResetEvent(false);
 
         public HidDeviceHandler(ILogger logger, ISwitchFactory switchFactory)
         {
+            Stopping = false;
             _logger = logger;
             _switchFactory = switchFactory;
         }
 
+        public bool Stopping { get; set; } 
+
         public void Load(int? vendorId, int? productId)
         {
             var deviceList = DeviceList.Local;
-            var dev = deviceList.GetHidDeviceOrNull(vendorId, productId);            
+            var allDevices = deviceList.GetHidDevices();
+            if(allDevices == null)
+            {
+                _logger.LogDebug("Unable to find any HID devices.");
+                return;
+            }
+            HidDevice? dev = allDevices.FirstOrDefault(d => d.MaxInputReportLength > 0 && d.VendorID == vendorId && d.ProductID == productId);
+            
+            //var dev = deviceList.GetHidDeviceOrNull(vendorId, productId);            
             _switchFactory.LoadDevice(vendorId, productId);
 
             if(dev == null)
@@ -52,42 +65,26 @@ namespace GD.SwitchHandler
                     , string.Join(" ", rawReportDescriptor.Select(d => d.ToString("X2")))
                     , rawReportDescriptor.Length));
 
-                int indent = 0;
-                foreach (var element in EncodedItem.DecodeItems(rawReportDescriptor, 0, rawReportDescriptor.Length))
-                {
-                    if (element.ItemType == ItemType.Main && element.TagForMain == MainItemTag.EndCollection) { indent -= 2; }
-
-                    _logger.LogDebug("  {0}{1}", new string(' ', indent), element);
-
-                    if (element.ItemType == ItemType.Main && element.TagForMain == MainItemTag.Collection) { indent += 2; }
-                }
-
                 var reportDescriptor = dev.GetReportDescriptor();
-                foreach (var deviceItem in reportDescriptor.DeviceItems)
-                {
-                    foreach (var usage in deviceItem.Usages.GetAllValues())
-                    {
-                        _logger.LogDebug(string.Format("Usage: {0:X4} {1}", usage, (Usage)usage));
-                    }
-                    foreach (var report in deviceItem.Reports)
-                    {
-                        _logger.LogDebug(string.Format("{0}: ReportID={1}, Length={2}, Items={3}",
-                                            report.ReportType, report.ReportID, report.Length, report.DataItems.Count));
-                        foreach (var dataItem in report.DataItems)
-                        {
-                            _logger.LogDebug(string.Format("  {0} Elements x {1} Bits, Units: {2}, Expected Usage Type: {3}, Flags: {4}, Usages: {5}",
-                                dataItem.ElementCount, dataItem.ElementBits, dataItem.Unit.System, dataItem.ExpectedUsageType, dataItem.Flags,
-                                string.Join(", ", dataItem.Usages.GetAllValues().Select(usage => usage.ToString("X4") + " " + ((Usage)usage).ToString()))));
 
-                            if(dataItem.ExpectedUsageType == ExpectedUsageType.PushButton)
-                            {
-                                Task.Run(()=> {
-                                    Run(dev, reportDescriptor, deviceItem);
-                                }).Wait();
-                            }
-                        }
-                    }
+                var autos = new AutoResetEvent[reportDescriptor.DeviceItems.Count];// [reportDescriptor.Reports.Count];
+                var i = 0;
+
+                if(reportDescriptor.DeviceItems.Count > 1)
+                {
+                    _logger.LogWarning("HID Device has multiple report descriptors. Picking the first one but this may cause unexpected behavior.");
                 }
+                var inputParser = reportDescriptor.DeviceItems.FirstOrDefault()?.CreateDeviceItemInputParser();
+
+                var auto = new AutoResetEvent(false);
+                autos[i] = auto;
+                i++;
+
+                var t = new Thread(() => Listen(auto, dev, reportDescriptor, inputParser));
+                t.Start();
+
+                WaitHandle.WaitAll(autos);
+                _manual.Reset();
             }
             catch(Exception ex)
             {
@@ -96,49 +93,119 @@ namespace GD.SwitchHandler
             }
         }
 
-        public void Run(HidDevice dev, ReportDescriptor reportDescriptor, DeviceItem deviceItem)
+        private void Listen(AutoResetEvent auto, HidDevice dev, ReportDescriptor reportDescriptor, DeviceItemInputParser inputParser)
         {
-            
-            _logger.LogDebug("Opening device...");
+            _manual.Set();
 
-            HidStream hidStream;
-            if (dev.TryOpen(out hidStream))
+            try
             {
-                _logger.LogDebug("Opened device.");
-                hidStream.ReadTimeout = Timeout.Infinite;
+                _logger.LogDebug("Opening device...");
 
-                using (hidStream)
+                HidStream hidStream;
+                if (dev.TryOpen(out hidStream))
                 {
-                    var inputReportBuffer = new byte[dev.GetMaxInputReportLength()];
-                    var inputReceiver = reportDescriptor.CreateHidDeviceInputReceiver();
-                    var inputParser = deviceItem.CreateDeviceItemInputParser();
+                    _logger.LogDebug("Opened device.");
+                    hidStream.ReadTimeout = Timeout.Infinite;
 
-                    inputReceiver.Start(hidStream);
-                    while (true)
+                    using (hidStream)
                     {
-                        if (!inputReceiver.IsRunning) { break; } // Disconnected?
+                        var inputReportBuffer = new byte[dev.GetMaxInputReportLength()];
+                        var inputReceiver = reportDescriptor.CreateHidDeviceInputReceiver();
+                        inputReceiver.Start(hidStream);
 
-                        Report report; // Periodically check if the receiver has any reports.
-                        while (inputReceiver.TryRead(inputReportBuffer, 0, out report))
+                        while (true && !Stopping)
                         {
-                            // Parse the report if possible.
-                            // This will return false if (for example) the report applies to a different DeviceItem.
-                            if (inputParser.TryParseReport(inputReportBuffer, 0, report))
+                            if (!inputReceiver.IsRunning) { break; } // Disconnected?
+
+                            Report report; // Periodically check if the receiver has any reports.
+                            while (inputReceiver.TryRead(inputReportBuffer, 0, out report))
                             {
-                                while (inputParser.HasChanged)
+                                if (inputParser.TryParseReport(inputReportBuffer, 0, report))
                                 {
-                                    _switchFactory.Update(inputParser);
+                                    while (inputParser.HasChanged)
+                                    {
+                                        _switchFactory.Update(inputParser);
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                _logger.LogDebug("Closed device.");
+                    _logger.LogDebug("Closed device.");
+                }
+                else
+                {
+                    _logger.LogDebug("Failed to open device.");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                _logger.LogDebug("Failed to open device.");
+            }
+            finally
+            {
+                auto.Set();
+            }
+        }
+
+        private void InputReceiver_Received(object? sender, EventArgs e)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void Run(AutoResetEvent auto, HidDevice dev, ReportDescriptor reportDescriptor, DeviceItem deviceItem)
+        {
+            _manual.WaitOne();
+
+            try
+            {
+                _logger.LogDebug("Opening device...");
+
+                HidStream hidStream;
+                if (dev.TryOpen(out hidStream))
+                {
+                    _logger.LogDebug("Opened device.");
+                    hidStream.ReadTimeout = Timeout.Infinite;
+
+                    using (hidStream)
+                    {
+                        var inputReportBuffer = new byte[dev.GetMaxInputReportLength()];
+                        var inputReceiver = reportDescriptor.CreateHidDeviceInputReceiver();
+                        var inputParser = deviceItem.CreateDeviceItemInputParser();
+
+                        inputReceiver.Start(hidStream);
+                        while (true)
+                        {
+                            //if (!inputReceiver.IsRunning) { break; } // Disconnected?
+
+                            Report report; // Periodically check if the receiver has any reports.
+                            while (inputReceiver.TryRead(inputReportBuffer, 0, out report))
+                            {
+                                // Parse the report if possible.
+                                // This will return false if (for example) the report applies to a different DeviceItem.
+                                if (inputParser.TryParseReport(inputReportBuffer, 0, report))
+                                {
+                                    while (inputParser.HasChanged)
+                                    {
+                                        _switchFactory.Update(inputParser);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    _logger.LogDebug("Closed device.");
+                }
+                else
+                {
+                    _logger.LogDebug("Failed to open device.");
+                }
+            }
+            catch(Exception ex) 
+            { 
+            }
+            finally 
+            { 
+                auto.Set(); 
             }
         }
     }

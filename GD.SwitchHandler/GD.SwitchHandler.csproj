@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HIDSharp" Version="2.1.0" />
+    <PackageReference Include="HidSharp" Version="2.1.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="7.0.0" />
     <PackageReference Include="Newtonsoft.JSON" Version="13.0.2" />
   </ItemGroup>

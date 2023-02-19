@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GD.SwitchHandler", "GD.Swit
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GD.SwitchHandler.Unit.Tests", "GD.SwitchHandler.Unit.Tests\GD.SwitchHandler.Unit.Tests.csproj", "{AD505ACC-2349-427A-83F2-CF41A6E72FE8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GD.SwitchHandler.Functional.Tests", "GD.SwitchHandler.Functional.Tests\GD.SwitchHandler.Functional.Tests.csproj", "{B404CDA1-D3A6-4771-A89C-BA59DEE0F5E6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GD.SwitchHandler.Functional.Tests", "GD.SwitchHandler.Functional.Tests\GD.SwitchHandler.Functional.Tests.csproj", "{B404CDA1-D3A6-4771-A89C-BA59DEE0F5E6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
